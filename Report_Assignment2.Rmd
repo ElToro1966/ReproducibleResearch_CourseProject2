@@ -1,0 +1,108 @@
+# Analysis of Data From Severe Weather Events
+
+1 to 3 figures
+
+descriptive captions
+
+## Synposis
+
+10 lines or less
+
+## Introduction
+
+In order to process the data, we need the following libraries:
+```{r get_libraries}
+library(dplyr)
+```
+
+## Data Processing
+
+### Downloading Data 
+
+Using *read.csv()* to download data:
+```{r downloading_data}
+stormdata <- read.csv("repdata_data_StormData.csv", header = TRUE, sep = ",")
+```
+Alt. URL: https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2
+
+### Description & Justification For Data Transformations
+We are only looking for events and their consequences in terms of health and economic impact. Since the dataset is huge, we subset it to include only the columns we need for further processing, namely EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, and CROPDMGEXP. After subsetting, the original *stormdata* dataset is removed from memory.
+```{r subsetting_data}
+stormdata_subset <- stormdata[c("EVTYPE", "FATALITIES", "INJURIES", "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+rm(stormdata)
+```
+Numbers for property damage and crop damage must be calculated, because:
+"Estimates should be rounded to three significant digits, followed by an alphabetical character signifying the magnitude of the number, i.e., 1.55B for $1,550,000,000.  Alphabetical characters used to signify magnitude 
+include “K” for thousands, “M” for millions, and “B” for billions.  If additional precision is available, it may be provided in the narrative part of the entry." [1]
+
+The letter in the PROPDMGEXP and CROPDMGEXP are replaced by the corresponding values. The numbers in the PROPDMG- and CROPDMG--columns are multiplied by the number in the PROPDMGEXP- and CROPDMGEXP-columns, respectively, and calculated values placed in the PROPDMGRES and CROPDMGRES, respectively:
+```{r adding_damage_col}
+source("function_magnitude.R")
+stormdata_subset$PROPDMGEXP <- lapply(stormdata_subset$PROPDMGEXP,
+    numeric_value)
+stormdata_subset$PROPDMGRES <- stormdata_subset$PROPDMG *
+    as.numeric(stormdata_subset$PROPDMGEXP)
+stormdata_subset$CROPDMGEXP <- lapply(stormdata_subset$CROPDMGEXP,
+    numeric_value)
+stormdata_subset$CROPDMGRES <- stormdata_subset$CROPDMG *
+    as.numeric(stormdata_subset$CROPDMGEXP)
+```
+
+We add a HARMFULNESS-column to calculate the total of fatalities and injuries. We add a ECONLOSS-column to calculate the total economic loss based on property damage and crop damage.
+```{r calculating_totals}
+stormdata_subset$HARMFULNESS <- stormdata_subset$FATALITIES +
+    stormdata_subset$INJURIES
+stormdata_subset$ECONLOSS <- stormdata_subset$PROPDMGRES +
+    stormdata_subset$CROPDMGRES
+```
+
+## Analysis
+
+Types of events that are most harmful to population health: Consequences for health are set out in the table's FATALITIES and INJURIES columns. When calculating harmfulness, the sum of two columns is calculated for each event, set out in the added HARMFULNESS-column. 
+
+The single most harmful event:
+```{r single_max_harmfulness}
+stormdata_subset[which.max(stormdata_subset$HARMFULNESS), ]
+```
+
+The most harmful event as a category:
+```{r category_max_harmfulness}
+df_harmful_events <- stormdata_subset %>% group_by(EVTYPE) %>% summarise(sum=sum(HARMFULNESS)) %>% data.frame()
+df_harmful_events[which.max(df_harmful_events$sum), ]
+```
+
+There are a few problems with the data, most importantly the realitvely caotic categorization, where some categories overlap in various ways. However, since there is one event that stands out in terms of harm to health, no recategorization is necessary to find the event category with the - by far - highest effect on health:
+```{r health_effect_summary}
+arrange(df_harmful_events, desc(sum))[1:30, ]
+```
+Deciding the second most harmfull event, and so on, is - as we can see from the listing above - another matter. Several categories belong togehter, for instance, TSTM WIND, THUNDERSTORM WIND, and THUNDERSTORM WINDS, and putting these together in one category affects the end result.
+
+Types of events that have the greatest economic consequences: The consequences in economic terms are calculated by the PROPDMGRES and CROPDMGRES columns. When calculating economic loss, the sum of two columns is calculated for each event, set out in the added ECONLOSS-column.
+
+The single event with the highest economic loss:
+```{r single_max_econloss}
+stormdata_subset[which.max(stormdata_subset$ECONLOSS), ]
+```
+The event category with the highest economic loss:
+```{r category_max_econloss}
+df_econloss_events <- stormdata_subset %>% group_by(EVTYPE) %>% summarise(sum=sum(ECONLOSS)) %>% data.frame()
+df_econloss_events[which.max(df_econloss_events$sum), ]
+```
+Again, there are a few problems with the resultant data. Most events do not have an economic loss specified:
+```{r econloss_summary}
+summary(df_econloss_events)
+```
+Then there is the caotic categorization. However, since there is one event that stands out in terms of economic loss (like there is for effect on health above), no recategorization is necessary to find the event category with the - by far - highest loss:
+```{r econloss_top_events}
+na.omit(df_econloss_events)
+```
+
+## Results
+
+
+
+## References
+
+[1] NATIONAL WEATHER SERVICE INSTRUCTION 10-1605 - https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf - Dwonloaded January 26, 2018.
+
+[2] NOOA Storm Data FAQ Page - https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf - Dwonloaded January 26, 2018.
